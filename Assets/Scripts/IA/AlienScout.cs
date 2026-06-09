@@ -13,6 +13,7 @@ public class AlienScout : MonoBehaviour
     [Header("References")]
     [SerializeField] private Transform player;
     [SerializeField] private Transform[] patrolPoints;
+    [SerializeField] private Animator animator;
 
     [Header("Movement")]
     [SerializeField] private float patrolSpeed = 3f;
@@ -50,6 +51,9 @@ public class AlienScout : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>();
     }
 
     private void Start()
@@ -63,19 +67,23 @@ public class AlienScout : MonoBehaviour
         switch (currentState)
         {
             case State.Patrol:
+                SetAnimationSpeed(patrolSpeed);
                 Patrol();
                 DetectPlayer();
                 break;
 
             case State.Chase:
+                SetAnimationSpeed(chaseSpeed);
                 Chase();
                 break;
 
             case State.Attack:
+                SetAnimationSpeed(0f);
                 Attack();
                 break;
 
             case State.Search:
+                SetAnimationSpeed(chaseSpeed);
                 Search();
                 break;
         }
@@ -86,7 +94,10 @@ public class AlienScout : MonoBehaviour
         pathFollower.enabled = false;
 
         if (patrolPoints == null || patrolPoints.Length == 0)
+        {
+            SetAnimationSpeed(0f);
             return;
+        }
 
         Transform targetPoint = patrolPoints[currentPatrolIndex];
 
@@ -222,6 +233,8 @@ public class AlienScout : MonoBehaviour
 
         if (attackTimer <= 0f)
         {
+            animator.SetTrigger("Attack");
+
             PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
 
             if (playerHealth != null)
@@ -256,7 +269,10 @@ public class AlienScout : MonoBehaviour
         direction.y = 0f;
 
         if (direction.magnitude < 0.1f)
+        {
+            SetAnimationSpeed(0f);
             return;
+        }
 
         direction.Normalize();
 
@@ -271,16 +287,9 @@ public class AlienScout : MonoBehaviour
         );
     }
 
-    private void OnDrawGizmosSelected()
+    private void SetAnimationSpeed(float speed)
     {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, detectionRange);
-
-        Vector3 leftLimit = Quaternion.Euler(0, -viewAngle * 0.5f, 0) * transform.forward;
-        Vector3 rightLimit = Quaternion.Euler(0, viewAngle * 0.5f, 0) * transform.forward;
-
-        Gizmos.color = Color.blue;
-        Gizmos.DrawRay(transform.position + Vector3.up, leftLimit * detectionRange);
-        Gizmos.DrawRay(transform.position + Vector3.up, rightLimit * detectionRange);
+        if (animator != null)
+            animator.SetFloat("Speed", speed);
     }
 }
