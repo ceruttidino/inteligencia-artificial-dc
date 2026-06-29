@@ -7,11 +7,31 @@ public class AStarPathfinder : MonoBehaviour
 
     public List<Vector3> FindPath(Vector3 startPosition, Vector3 targetPosition)
     {
+        if (gridManager == null)
+            return null;
+
+        gridManager.ResetNodes();
+
         GridNode startNode = gridManager.NodeFromWorldPoint(startPosition);
         GridNode targetNode = gridManager.NodeFromWorldPoint(targetPosition);
 
+        if (startNode == null || targetNode == null)
+            return null;
+
+        if (!startNode.walkable)
+            startNode = gridManager.GetClosestWalkableNode(startNode);
+
+        if (!targetNode.walkable)
+            targetNode = gridManager.GetClosestWalkableNode(targetNode);
+
+        if (startNode == null || targetNode == null)
+            return null;
+
         List<GridNode> openSet = new List<GridNode>();
         HashSet<GridNode> closedSet = new HashSet<GridNode>();
+
+        startNode.gCost = 0;
+        startNode.hCost = GetDistance(startNode, targetNode);
 
         openSet.Add(startNode);
 
@@ -33,9 +53,7 @@ public class AStarPathfinder : MonoBehaviour
             closedSet.Add(currentNode);
 
             if (currentNode == targetNode)
-            {
                 return RetracePath(startNode, targetNode);
-            }
 
             foreach (GridNode neighbour in gridManager.GetNeighbours(currentNode))
             {

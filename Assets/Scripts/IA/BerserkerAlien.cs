@@ -11,6 +11,7 @@ public class BerserkerAlien : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private Transform player;
+    [SerializeField] private Animator animator;
 
     [Header("Movement")]
     [SerializeField] private float wanderSpeed = 2.5f;
@@ -34,6 +35,9 @@ public class BerserkerAlien : MonoBehaviour
     [Header("Pursue")]
     [SerializeField] private float predictionTime = 0.6f;
 
+    [Header("Pathfinding")]
+    [SerializeField] private EnemyFollowPath pathFollower;
+
     private CharacterController controller;
     private State currentState;
 
@@ -47,48 +51,109 @@ public class BerserkerAlien : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+
+        if (animator == null)
+            animator = GetComponentInChildren<Animator>();
+
+        if (pathFollower == null)
+            pathFollower = GetComponent<EnemyFollowPath>();
     }
 
     private void Start()
     {
-        currentState = State.Wander;
-        PickNewWanderTarget();
-        lastPlayerPosition = player.position;
+        if (player != null)
+            lastPlayerPosition = player.position;
+
+        EnterWander();
     }
 
     private void Update()
     {
+        if (player == null)
+            return;
+
         UpdatePlayerVelocity();
 
         switch (currentState)
         {
             case State.Wander:
+                SetAnimationSpeed(wanderSpeed);
                 Wander();
-                if (CanSeePlayer())
-                    currentState = State.Pursue;
                 break;
 
             case State.Pursue:
+                SetAnimationSpeed(pursueSpeed);
                 Pursue();
                 break;
 
             case State.Attack:
+                SetAnimationSpeed(0f);
                 Attack();
                 break;
         }
     }
 
+    private void EnterWander()
+    {
+        currentState = State.Wander;
+
+        if (pathFollower != null)
+        {
+            pathFollower.Stop();
+            pathFollower.enabled = false;
+        }
+
+        PickNewWanderTarget();
+    }
+
+    private void EnterPursue()
+    {
+        currentState = State.Pursue;
+
+        if (pathFollower != null)
+        {
+            pathFollower.enabled = true;
+            pathFollower.SetSpeed(pursueSpeed);
+            pathFollower.SetTarget(player);
+        }
+    }
+
+    private void EnterAttack()
+    {
+        currentState = State.Attack;
+
+        if (pathFollower != null)
+        {
+            pathFollower.Stop();
+            pathFollower.enabled = false;
+        }
+    }
+
     private void UpdatePlayerVelocity()
     {
+        if (Time.deltaTime <= 0f)
+            return;
+
         playerVelocity = (player.position - lastPlayerPosition) / Time.deltaTime;
         lastPlayerPosition = player.position;
     }
 
     private void Wander()
     {
+        if (CanSeePlayer())
+        {
+            EnterPursue();
+            return;
+        }
+
         wanderTimer -= Time.deltaTime;
 
-        if (wanderTimer <= 0f || Vector3.Distance(transform.position, wanderTarget) < 1f)
+        float distanceToTarget = Vector3.Distance(
+            new Vector3(transform.position.x, 0f, transform.position.z),
+            new Vector3(wanderTarget.x, 0f, wanderTarget.z)
+        );
+
+        if (wanderTimer <= 0f || distanceToTarget < 1f)
         {
             PickNewWanderTarget();
         }
@@ -111,21 +176,23 @@ public class BerserkerAlien : MonoBehaviour
 
     private void Pursue()
     {
-        Vector3 predictedPosition = player.position + playerVelocity * predictionTime;
-
-        MoveTo(predictedPosition, pursueSpeed);
-
         float distance = Vector3.Distance(transform.position, player.position);
+
+        if (pathFollower == null)
+        {
+            Vector3 predictedPosition = player.position + playerVelocity * predictionTime;
+            MoveTo(predictedPosition, pursueSpeed);
+        }
 
         if (distance <= attackRange)
         {
-            currentState = State.Attack;
+            EnterAttack();
             return;
         }
 
         if (distance > detectionRange + 8f)
         {
-            currentState = State.Wander;
+            EnterWander();
         }
     }
 
@@ -137,7 +204,7 @@ public class BerserkerAlien : MonoBehaviour
 
         if (distance > attackRange)
         {
-            currentState = State.Pursue;
+            EnterPursue();
             return;
         }
 
@@ -145,12 +212,13 @@ public class BerserkerAlien : MonoBehaviour
 
         if (attackTimer <= 0f)
         {
+            if (animator != null)
+                animator.SetTrigger("Attack");
+
             PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
 
             if (playerHealth != null)
-            {
                 playerHealth.TakeDamage(damage);
-            }
 
             attackTimer = attackCooldown;
         }
@@ -175,7 +243,11 @@ public class BerserkerAlien : MonoBehaviour
         Vector3 rayTarget = player.position + Vector3.up * 1.2f;
         Vector3 rayDirection = rayTarget - rayOrigin;
 
-        if (Physics.Raycast(rayOrigin, rayDirection.normalized, detectionRange, obstacleLayer))
+        if (Physics.Raycast(
+            rayOrigin,
+            rayDirection.normalized,
+            rayDirection.magnitude,
+            obstacleLayer))
         {
             return false;
         }
@@ -189,11 +261,15 @@ public class BerserkerAlien : MonoBehaviour
         direction.y = 0f;
 
         if (direction.magnitude < 0.1f)
+        {
+            SetAnimationSpeed(0f);
             return;
+        }
 
         direction.Normalize();
 
-        controller.Move(direction * speed * Time.deltaTime);
+        if (controller != null)
+            controller.Move(direction * speed * Time.deltaTime);
 
         Quaternion targetRotation = Quaternion.LookRotation(direction);
 
@@ -209,7 +285,7 @@ public class BerserkerAlien : MonoBehaviour
         Vector3 direction = player.position - transform.position;
         direction.y = 0f;
 
-        if (direction == Vector3.zero)
+        if (direction.sqrMagnitude < 0.01f)
             return;
 
         Quaternion targetRotation = Quaternion.LookRotation(direction);
@@ -219,5 +295,11 @@ public class BerserkerAlien : MonoBehaviour
             targetRotation,
             rotationSpeed * Time.deltaTime
         );
+    }
+
+    private void SetAnimationSpeed(float speed)
+    {
+        if (animator != null)
+            animator.SetFloat("Speed", speed);
     }
 }

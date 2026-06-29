@@ -40,12 +40,10 @@ public class AlienScout : MonoBehaviour
 
     private Vector3 lastKnownPlayerPosition;
     private float searchTimer;
-
     private float attackTimer;
 
     private CharacterController controller;
     private State currentState;
-
     private int currentPatrolIndex;
 
     private void Awake()
@@ -54,16 +52,21 @@ public class AlienScout : MonoBehaviour
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
+
+        if (pathFollower == null)
+            pathFollower = GetComponent<EnemyFollowPath>();
     }
 
     private void Start()
     {
-        currentState = State.Patrol;
-        pathFollower.enabled = false;
+        EnterPatrol();
     }
 
     private void Update()
     {
+        if (player == null)
+            return;
+
         switch (currentState)
         {
             case State.Patrol:
@@ -77,22 +80,64 @@ public class AlienScout : MonoBehaviour
                 Chase();
                 break;
 
-            case State.Attack:
-                SetAnimationSpeed(0f);
-                Attack();
-                break;
-
             case State.Search:
                 SetAnimationSpeed(chaseSpeed);
                 Search();
                 break;
+
+            case State.Attack:
+                SetAnimationSpeed(0f);
+                Attack();
+                break;
+        }
+    }
+
+    private void EnterPatrol()
+    {
+        currentState = State.Patrol;
+
+        if (pathFollower != null)
+            pathFollower.enabled = false;
+    }
+
+    private void EnterChase()
+    {
+        currentState = State.Chase;
+
+        if (pathFollower != null)
+        {
+            pathFollower.enabled = true;
+            pathFollower.SetSpeed(chaseSpeed);
+            pathFollower.SetTarget(player);
+        }
+    }
+
+    private void EnterSearch()
+    {
+        currentState = State.Search;
+        searchTimer = searchDuration;
+
+        if (pathFollower != null)
+        {
+            pathFollower.enabled = true;
+            pathFollower.SetSpeed(chaseSpeed);
+            pathFollower.SetDestination(lastKnownPlayerPosition);
+        }
+    }
+
+    private void EnterAttack()
+    {
+        currentState = State.Attack;
+
+        if (pathFollower != null)
+        {
+            pathFollower.Stop();
+            pathFollower.enabled = false;
         }
     }
 
     private void Patrol()
     {
-        pathFollower.enabled = false;
-
         if (patrolPoints == null || patrolPoints.Length == 0)
         {
             SetAnimationSpeed(0f);
@@ -107,8 +152,8 @@ public class AlienScout : MonoBehaviour
         MoveTo(targetPosition, patrolSpeed);
 
         float distance = Vector3.Distance(
-            new Vector3(transform.position.x, 0, transform.position.z),
-            new Vector3(targetPosition.x, 0, targetPosition.z)
+            new Vector3(transform.position.x, 0f, transform.position.z),
+            new Vector3(targetPosition.x, 0f, targetPosition.z)
         );
 
         if (distance < 1.2f)
@@ -116,10 +161,7 @@ public class AlienScout : MonoBehaviour
             currentPatrolIndex++;
 
             if (currentPatrolIndex >= patrolPoints.Length)
-            {
                 currentPatrolIndex = 0;
-            }
-
         }
     }
 
@@ -128,11 +170,77 @@ public class AlienScout : MonoBehaviour
         if (CanSeePlayer())
         {
             lastKnownPlayerPosition = player.position;
+            EnterChase();
+        }
+    }
 
-            pathFollower.enabled = true;
-            pathFollower.SetTarget(player);
+    private void Chase()
+    {
+        float distance = Vector3.Distance(transform.position, player.position);
 
-            currentState = State.Chase;
+        if (CanSeePlayer())
+        {
+            lastKnownPlayerPosition = player.position;
+        }
+        else
+        {
+            EnterSearch();
+            return;
+        }
+
+        if (distance <= attackRange)
+        {
+            EnterAttack();
+        }
+    }
+
+    private void Search()
+    {
+        searchTimer -= Time.deltaTime;
+
+        if (CanSeePlayer())
+        {
+            lastKnownPlayerPosition = player.position;
+            EnterChase();
+            return;
+        }
+
+        float distanceToLastPosition = Vector3.Distance(
+            transform.position,
+            lastKnownPlayerPosition
+        );
+
+        if (distanceToLastPosition < 1.5f || searchTimer <= 0f)
+        {
+            EnterPatrol();
+        }
+    }
+
+    private void Attack()
+    {
+        LookAtPlayer();
+
+        float distance = Vector3.Distance(transform.position, player.position);
+
+        if (distance > attackRange)
+        {
+            EnterChase();
+            return;
+        }
+
+        attackTimer -= Time.deltaTime;
+
+        if (attackTimer <= 0f)
+        {
+            if (animator != null)
+                animator.SetTrigger("Attack");
+
+            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+
+            if (playerHealth != null)
+                playerHealth.TakeDamage(damage);
+
+            attackTimer = attackCooldown;
         }
     }
 
@@ -155,112 +263,16 @@ public class AlienScout : MonoBehaviour
         Vector3 rayTarget = player.position + Vector3.up * 1.2f;
         Vector3 rayDirection = rayTarget - rayOrigin;
 
-        if (Physics.Raycast(rayOrigin, rayDirection.normalized, out RaycastHit hit, detectionRange, obstacleLayer))
+        if (Physics.Raycast(
+            rayOrigin,
+            rayDirection.normalized,
+            rayDirection.magnitude,
+            obstacleLayer))
         {
             return false;
         }
 
         return true;
-    }
-
-    private void Chase()
-    {
-        float distance = Vector3.Distance(transform.position, player.position);
-
-        if (CanSeePlayer())
-        {
-            lastKnownPlayerPosition = player.position;
-        }
-        else
-        {
-            searchTimer = searchDuration;
-
-            pathFollower.enabled = true;
-            pathFollower.SetDestination(lastKnownPlayerPosition);
-
-            currentState = State.Search;
-            return;
-        }
-
-        if (distance <= attackRange)
-        {
-            pathFollower.enabled = false;
-            currentState = State.Attack;
-        }
-    }
-
-    private void Search()
-    {
-        searchTimer -= Time.deltaTime;
-
-        if (CanSeePlayer())
-        {
-            pathFollower.enabled = true;
-            pathFollower.SetTarget(player);
-
-            currentState = State.Chase;
-            return;
-        }
-
-        float distanceToLastPosition = Vector3.Distance(
-            transform.position,
-            lastKnownPlayerPosition
-        );
-
-        if (distanceToLastPosition < 1.5f || searchTimer <= 0f)
-        {
-            pathFollower.enabled = false;
-            currentState = State.Patrol;
-        }
-    }
-
-    private void Attack()
-    {
-        LookAtPlayer();
-
-        float distance = Vector3.Distance(transform.position, player.position);
-
-        if (distance > attackRange)
-        {
-            pathFollower.enabled = true;
-            pathFollower.SetTarget(player);
-
-            currentState = State.Chase;
-            return;
-        }
-
-        attackTimer -= Time.deltaTime;
-
-        if (attackTimer <= 0f)
-        {
-            animator.SetTrigger("Attack");
-
-            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
-
-            if (playerHealth != null)
-            {
-                playerHealth.TakeDamage(damage);
-            }
-
-            attackTimer = attackCooldown;
-        }
-    }
-
-    private void LookAtPlayer()
-    {
-        Vector3 direction = player.position - transform.position;
-        direction.y = 0f;
-
-        if (direction == Vector3.zero)
-            return;
-
-        Quaternion targetRotation = Quaternion.LookRotation(direction);
-
-        transform.rotation = Quaternion.Slerp(
-            transform.rotation,
-            targetRotation,
-            rotationSpeed * Time.deltaTime
-        );
     }
 
     private void MoveTo(Vector3 targetPosition, float speed)
@@ -276,7 +288,25 @@ public class AlienScout : MonoBehaviour
 
         direction.Normalize();
 
-        controller.Move(direction * speed * Time.deltaTime);
+        if (controller != null)
+            controller.Move(direction * speed * Time.deltaTime);
+
+        Quaternion targetRotation = Quaternion.LookRotation(direction);
+
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            targetRotation,
+            rotationSpeed * Time.deltaTime
+        );
+    }
+
+    private void LookAtPlayer()
+    {
+        Vector3 direction = player.position - transform.position;
+        direction.y = 0f;
+
+        if (direction.sqrMagnitude < 0.01f)
+            return;
 
         Quaternion targetRotation = Quaternion.LookRotation(direction);
 
