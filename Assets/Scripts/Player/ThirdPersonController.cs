@@ -22,6 +22,7 @@ public class ThirdPersonController : MonoBehaviour
     private void Update()
     {
         HandleMovement();
+        HandleRotation();
         HandleGravity();
     }
 
@@ -65,6 +66,25 @@ public class ThirdPersonController : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
         characterController.Move(velocity * Time.deltaTime);
+    }
+
+    private void HandleRotation()
+    {
+        Vector3 lookDirection = cameraTransform.forward;
+        lookDirection.y = 0f;
+
+        if (lookDirection.sqrMagnitude < 0.01f)
+            return;
+
+        lookDirection.Normalize();
+
+        Quaternion targetRotation = Quaternion.LookRotation(lookDirection);
+
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            targetRotation,
+            rotationSpeed * Time.deltaTime
+        );
     }
 
 }

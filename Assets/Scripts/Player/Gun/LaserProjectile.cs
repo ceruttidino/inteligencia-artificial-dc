@@ -21,16 +21,22 @@ public class LaserProjectile : MonoBehaviour
 
     public void Init(Vector3 direction)
     {
+        if (rb == null)
+        {
+            Debug.LogError("El proyectil no tiene Rigidbody");
+            return;
+        }
+
         rb.linearVelocity = direction.normalized * speed;
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (hasHit) return;
-        hasHit = true;
-
         if (collision.gameObject.CompareTag("Player"))
             return;
+
+        if (hasHit) return;
+        hasHit = true;
 
         EnemyHealth enemy = collision.gameObject.GetComponentInParent<EnemyHealth>();
 

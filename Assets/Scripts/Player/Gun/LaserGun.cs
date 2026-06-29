@@ -9,6 +9,7 @@ public class LaserGun : MonoBehaviour
 
     [Header("Gun")]
     [SerializeField] private float range = 100f;
+    [SerializeField] private LayerMask shootMask;
 
     private void Update()
     {
@@ -26,15 +27,13 @@ public class LaserGun : MonoBehaviour
             return;
         }
 
-        Ray ray = playerCamera.ScreenPointToRay(
-            new Vector3(Screen.width / 2f, Screen.height / 2f, 0f)
-        );
+        Ray cameraRay = playerCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
 
-        Vector3 targetPoint = ray.origin + ray.direction * range;
+        Vector3 targetPoint = cameraRay.origin + cameraRay.direction * range;
 
-        if (Physics.Raycast(ray, out RaycastHit hit, range))
+        if (Physics.Raycast(cameraRay, out RaycastHit cameraHit, range, shootMask, QueryTriggerInteraction.Ignore))
         {
-            targetPoint = hit.point;
+            targetPoint = cameraHit.point;
         }
 
         Vector3 shootDirection = (targetPoint - firePoint.position).normalized;
@@ -46,11 +45,14 @@ public class LaserGun : MonoBehaviour
         );
 
         Collider projectileCollider = projectile.GetComponent<Collider>();
-        Collider playerCollider = GetComponent<Collider>();
+        Collider[] playerColliders = GetComponentsInParent<Collider>();
 
-        if (projectileCollider != null && playerCollider != null)
+        if (projectileCollider != null)
         {
-            Physics.IgnoreCollision(projectileCollider, playerCollider);
+            foreach (Collider playerCollider in playerColliders)
+            {
+                Physics.IgnoreCollision(projectileCollider, playerCollider);
+            }
         }
 
         LaserProjectile laserProjectile = projectile.GetComponent<LaserProjectile>();
@@ -61,6 +63,9 @@ public class LaserGun : MonoBehaviour
             Destroy(projectile);
             return;
         }
+
+        Debug.DrawRay(cameraRay.origin, cameraRay.direction * range, Color.green, 2f);
+        Debug.DrawLine(firePoint.position, targetPoint, Color.red, 2f);
 
         laserProjectile.Init(shootDirection);
     }
